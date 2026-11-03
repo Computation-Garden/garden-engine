@@ -237,7 +237,10 @@ build/
 	metadata = {
 		"category": info["id"],
 		"tags": [],
-		"title": "Sample Article",
+          "id": slugify("Sample Article"),
+          "title": "Sample Article",
+          "description": "Sample description for an article.",
+          "permalink": f"{info['url_prefix']}{slugify('Sample Article')}/",
 		"references": [],
 		"prerequisites": [],
 		"related": [],
