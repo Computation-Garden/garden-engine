@@ -222,6 +222,46 @@ _site/
 build/
 """
 
+	subprocess.run(
+		["mkdir", info["articles_directory"]],
+		cwd=section_path,
+		check=True
+	)
+	
+	subprocess.run(
+		["mkdir", "sample"],
+		cwd=section_path / info["articles_directory"],
+		check=True
+	)
+	
+	metadata = {
+		"category": info["id"],
+		"tags": [],
+		"title": "Sample Article",
+		"references": [],
+		"prerequisites": [],
+		"related": [],
+		"status": "draft",
+		"math": True
+	}
+	
+	frontmatter = yaml.safe_dump(
+		metadata,
+		sort_keys=False,
+		allow_unicode=True
+	)
+	
+	samplemd = f"""---
+{frontmatter.strip()}
+---
+
+# Sample Article
+
+Lorem ipsum dolor...
+"""
+
+	write_file(section_path / info["articles_directory"] / "sample" / "index.md", samplemd)
+
 	write_file(section_path / ".gitignore", gitignore)
 	
 	if info["initialize_git"]:
