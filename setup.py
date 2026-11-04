@@ -240,12 +240,9 @@ build/
           "id": slugify("Sample Article"),
           "title": "Sample Article",
           "description": "Sample description for an article.",
-          "permalink": f"{info['url_prefix']}{slugify('Sample Article')}/",
 		"references": [],
 		"prerequisites": [],
-		"related": [],
-		"status": "draft",
-		"math": True
+		"related": []
 	}
 	
 	frontmatter = yaml.safe_dump(

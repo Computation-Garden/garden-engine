@@ -10,7 +10,7 @@ SECTIONS = ROOT / "sections"
 def discover_articles():
 	articles = []
 
-	for section_dir in SECTIONS.iterdir():
+	for section_dir in sorted(SECTIONS.iterdir()):
 		if not section_dir.is_dir():
 			continue
 
@@ -21,24 +21,45 @@ def discover_articles():
 			continue
 
 		with config_file.open(encoding="utf-8") as f:
-			section = yaml.safe_load(f)
+			section = yaml.safe_load(f) or {}
 
-		article_dir = section_dir / section["articles_directory"]
+		section_id = section.get("id")
 
-		for article_file in article_dir.rglob("index.md"):
+		if not section_id:
+			raise ValueError(
+				f"Missing section ID in {config_file}"
+			)
+
+		article_root = section_dir / section["articles_directory"]
+
+		if not article_root.exists():
+			raise FileNotFoundError(article_root)
+
+		for article_file in sorted(
+			article_root.rglob("index.md")
+		):
 			post = frontmatter.load(article_file)
 
 			metadata = dict(post.metadata)
 
 			articles.append({
 				**metadata,
+
+				# actual content
 				"content": post.content,
-				"section": section["id"],
-				"source": str(article_file),
+
+				# section info
+				"section": section_id,
+				"section_title": section.get("title", section_id),
+				"position_in_section": section["order"].index(metadata["id"]),
+
+				# fs information
+				"_source": article_file,
+				"_article_dir": article_file.parent,
+				"_article_root": article_root,
 			})
 
 	return articles
-
 
 if __name__ == "__main__":
 	articles = discover_articles()
@@ -46,4 +67,4 @@ if __name__ == "__main__":
 	print(f"Discovered {len(articles)} articles")
 
 	for article in articles:
-		print(f"- {article['id']}: {article['title']}")
+		print(f"{article['section']}:{article['position_in_section']}>>{article['id']}: {article['title']}")
