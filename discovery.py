@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import frontmatter
 import yaml
 
@@ -8,7 +9,8 @@ SECTIONS = ROOT / "sections"
 
 
 def discover_articles():
-	articles = []
+	sections = []
+	all_ids = set()
 
 	for section_dir in sorted(SECTIONS.iterdir()):
 		if not section_dir.is_dir():
@@ -21,50 +23,71 @@ def discover_articles():
 			continue
 
 		with config_file.open(encoding="utf-8") as f:
-			section = yaml.safe_load(f) or {}
+			section = yaml.safe_load(f)
 
-		section_id = section.get("id")
+		required = ("id", "title", "articles_directory")
 
-		if not section_id:
-			raise ValueError(
-				f"Missing section ID in {config_file}"
-			)
+		for key in required:
+			if key not in section:
+				raise ValueError(
+					f"{config_file}: missing field '{key}'"
+				)
 
-		article_root = section_dir / section["articles_directory"]
+		article_dir = section_dir / section["articles_directory"]
 
-		if not article_root.exists():
-			raise FileNotFoundError(article_root)
+		if not article_dir.is_dir():
+			raise ValueError(f"Missing article directory: {article_dir}")
 
-		for article_file in sorted(
-			article_root.rglob("index.md")
-		):
+		articles = []
+
+		for article_file in sorted(article_dir.rglob("index.md")):
 			post = frontmatter.load(article_file)
-
 			metadata = dict(post.metadata)
+
+			article_id = metadata.get("id")
+
+			if not article_id:
+				raise ValueError(f"Missing article ID: {article_file}")
+
+			if article_id in all_ids:
+				raise ValueError(f"Duplicate article ID: {article_id}")
+
+			all_ids.add(article_id)
 
 			articles.append({
 				**metadata,
-
-				# actual content
 				"content": post.content,
-
-				# section info
-				"section": section_id,
-				"section_title": section.get("title", section_id),
-				"position_in_section": section["order"].index(metadata["id"]),
-
-				# fs information
-				"_source": article_file,
-				"_article_dir": article_file.parent,
-				"_article_root": article_root,
+				"section": section["id"],
+				"source": article_file,
+				"relative_source": article_file.relative_to(section_dir),
 			})
 
-	return articles
+		articles.sort(
+			key=lambda a: (
+				a.get("order", 999999),
+				a["id"]
+			)
+		)
+
+		sections.append({
+			**section,
+			"source": section_dir,
+			"articles": articles,
+		})
+
+	return sections
+
 
 if __name__ == "__main__":
-	articles = discover_articles()
+	sections = discover_articles()
 
-	print(f"Discovered {len(articles)} articles")
+	total = sum(len(s["articles"]) for s in sections)
 
-	for article in articles:
-		print(f"{article['section']}:{article['position_in_section']}>>{article['id']}: {article['title']}")
+	print(f"Discovered {len(sections)} sections")
+	print(f"Discovered {total} articles")
+
+	for section in sections:
+		print(f"\n{section['title']}")
+
+		for article in section["articles"]:
+			print(f"  - {article['id']}")
