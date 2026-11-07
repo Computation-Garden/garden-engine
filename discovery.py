@@ -25,7 +25,7 @@ def discover_articles():
 		with config_file.open(encoding="utf-8") as f:
 			section = yaml.safe_load(f)
 
-		required = ("id", "title", "articles_directory")
+		required = ("id", "title", "articles_directory", "groups", "description", "themecolor", "banner", "longdescription")
 
 		for key in required:
 			if key not in section:
@@ -48,9 +48,6 @@ def discover_articles():
 
 			if not article_id:
 				raise ValueError(f"Missing article ID: {article_file}")
-
-			if article_id in all_ids:
-				raise ValueError(f"Duplicate article ID: {article_id}")
 
 			all_ids.add(article_id)
 

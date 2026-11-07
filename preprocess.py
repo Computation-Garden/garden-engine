@@ -1,6 +1,7 @@
 import re
 import shutil
 from pathlib import Path
+import json
 
 from garden_engine.discovery import *
 
@@ -18,11 +19,11 @@ def replace_custom_syntax(content, workspace):
 	patterns = {
 		"diagram": {
 			"directory": "diagrams",
-			"render": lambda name, _: f'<img src="/diagrams/{name}">',
+			"render": lambda name, _: f'<img src="./diagrams/{name}">',
 		},
 		"image": {
 			"directory": "images",
-			"render": lambda name, _: f'<img src="/images/{name}">',
+			"render": lambda name, _: f'<img src="./images/{name}">',
 		},
 		"code": {
 			"directory": "code",
@@ -59,7 +60,24 @@ def replace_custom_syntax(content, workspace):
 		return config["render"](name, source)
 
 	return pattern.sub(replace, content)
+	
+def copy_section_banner(section, workspace):
+	banner = section["banner"]
 
+	if not banner:
+		return
+
+	source = WORK_DIR / section["source"] / banner
+
+	if not source.is_file():
+		raise FileNotFoundError(
+			f"Missing banner file: {source}"
+		)
+
+	shutil.copy2(
+		source,
+		workspace / banner
+	)
 
 def prepare_article(article, section):
 	workspace = (
@@ -89,12 +107,41 @@ def prepare_article(article, section):
 
 		content = replace_custom_syntax(content, workspace)
 
+		content = f"""---
+layout: cg_article
+section_title: {section["title"]}
+section_id: {section["id"]}
+"""+content[4:]
+
 		markdown_file.write_text(
 			content,
 			encoding="utf-8"
 		)
 
 	return workspace
+
+
+def generate_sections_data(sections):
+	data = [
+		{
+			"title": section["title"],
+			"groups": section["groups"],
+			"description": section["description"],
+			"longdescription": section["longdescription"],
+			"id": section["id"],
+		}
+		for section in sections
+	]
+
+	data_dir = WORK_DIR.parent / "_data"
+	data_dir.mkdir(parents=True, exist_ok=True)
+
+	output = data_dir / "sections.yml"
+
+	output.write_text(
+		json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+		encoding="utf-8"
+	)
 
 
 def generate_build_script(article, workspace):
@@ -105,8 +152,10 @@ def generate_build_script(article, workspace):
 		'OUTPUT_DIR="$ARTICLE_DIR/output"',
 		'mkdir -p "$OUTPUT_DIR/diagrams"',
 	]
+	flag = 0
 
 	for tex_file in sorted((workspace / "diagrams").glob("*.tex")):
+		flag = 1
 		name = tex_file.stem
 
 		commands.extend([
@@ -121,6 +170,16 @@ def generate_build_script(article, workspace):
 			(
 				f'pdftocairo -svg "$OUTPUT_DIR/{name}.pdf" '
 				f'"$OUTPUT_DIR/diagrams/{name}.svg"'
+			),
+		])
+		
+		commands.extend([
+			"",
+			f"# Move outputs out",
+			(
+				f'rm -rf "$ARTICLE_DIR/diagrams/"\n'
+				f'mv "$OUTPUT_DIR/diagrams/" "$ARTICLE_DIR"\n'
+				f'rm -rf "$OUTPUT_DIR"\n'
 			),
 		])
 
@@ -138,7 +197,9 @@ def generate_build_script(article, workspace):
 
 if __name__ == "__main__":
 	sections = discover_articles()
-
+	sections_file = generate_sections_data(sections)
+	print(f"Generated sections data.")
+	
 	total = sum(len(s["articles"]) for s in sections)
 
 	print(f"Discovered {len(sections)} sections")
@@ -146,18 +207,39 @@ if __name__ == "__main__":
 
 	build_scripts = []
 
+
+	
+	style_dir = WORK_DIR.parent / "_sass"
+	style_dir.mkdir(parents=True, exist_ok=True)
+	sections_sass = []
+
 	for section in sections:
 		print(f"\n{section['title']}")
 
 		workspace = WORK_DIR / section["id"]
 
-		indexcontent = f"""\
-# {section["title"]}
-{section["description"]}
+		workspace.mkdir(parents=True, exist_ok=True)
+		copy_section_banner(section, workspace)
+		indexcontent = f"""---
+title: {section["title"]}
+layout: cg_section
+id: {section["id"]}
+description: {section["description"]}
+longdescription: {section["longdescription"]}
+banner: {section["banner"]}
+---
 
-## Articles
+# Articles
 """
-
+		sass = style_dir / f"{section['id']}.sass"
+		sections_sass.append(f"@forward '{section['id']}.sass'")
+		sasscontent = f"""
+@use 'colourdefs'
+.{section["id"]}
+	--theme-color: #{{colourdefs.${section["themecolor"]}}}
+"""
+		sass.write_text(sasscontent)
+		
 		print("Preprocessing articles...")
 
 		for article in section["articles"]:
@@ -170,7 +252,7 @@ if __name__ == "__main__":
 
 			s = (
 				f'\n- [{article["title"]}]'
-				f'(/{article["section"]}/{article["id"]}/)'
+				f'(/sections/{article["section"]}/{article["id"]}/)'
 			)
 
 			indexcontent += s
@@ -186,7 +268,10 @@ if __name__ == "__main__":
 
 		print("Done.")
 
-	print(f"\nGenerated {len(build_scripts)} build scripts.")
+	sassidx = style_dir / f"_index.sass"
+	sassidx.write_text("\n".join(sections_sass))
+
+	print(f"\nGenerated {len(build_scripts)} build scripts and sass files.")
 	
 	
 
